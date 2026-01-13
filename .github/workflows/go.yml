@@ -25,17 +25,48 @@ jobs:
       run: docker compose up -d postgres
 
     - name: Espera Postgres subir
+      shell: bash
       run: |
+        set -e
+    
+        # pega o container id do serviço postgres criado pelo docker compose
+        CID="$(docker compose ps -q postgres)"
+    
+        if [ -z "$CID" ]; then
+          echo "Não achei o container do serviço 'postgres'."
+          docker compose ps
+          exit 1
+        fi
+    
+        echo "Container do Postgres: $CID"
+        docker ps -a --no-trunc | sed -n '1p;/'"$CID"'/p'
+    
+        # se o container caiu, mostra logs e falha
+        if [ "$(docker inspect -f '{{.State.Running}}' "$CID")" != "true" ]; then
+          echo "Postgres não está rodando. Logs:"
+          docker logs "$CID" || true
+          exit 1
+        fi
+    
+        # espera o Postgres ficar pronto
         for i in {1..20}; do
-          if docker exec $(docker ps -qf "name=postgres") pg_isready -U root -d root; then
+          if docker exec "$CID" pg_isready -U root -d root >/dev/null 2>&1; then
             echo "Postgres pronto!"
             exit 0
           fi
           echo "Aguardando Postgres..."
           sleep 2
+    
+          # se cair no meio do caminho, já mostra logs
+          if [ "$(docker inspect -f '{{.State.Running}}' "$CID")" != "true" ]; then
+            echo "Postgres caiu durante a espera. Logs:"
+            docker logs "$CID" || true
+            exit 1
+          fi
         done
-        echo "Postgres não ficou pronto a tempo"
-        docker logs $(docker ps -qf "name=postgres")
+    
+        echo "Postgres não ficou pronto a tempo. Logs:"
+        docker logs "$CID" || true
         exit 1
 
     - name: Lint
