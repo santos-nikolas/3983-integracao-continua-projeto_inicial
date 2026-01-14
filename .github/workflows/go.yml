@@ -28,26 +28,26 @@ jobs:
       shell: bash
       run: |
         set -e
-    
+
         # pega o container id do serviço postgres criado pelo docker compose
         CID="$(docker compose ps -q postgres)"
-    
+
         if [ -z "$CID" ]; then
           echo "Não achei o container do serviço 'postgres'."
           docker compose ps
           exit 1
         fi
-    
+
         echo "Container do Postgres: $CID"
         docker ps -a --no-trunc | sed -n '1p;/'"$CID"'/p'
-    
+
         # se o container caiu, mostra logs e falha
         if [ "$(docker inspect -f '{{.State.Running}}' "$CID")" != "true" ]; then
           echo "Postgres não está rodando. Logs:"
           docker logs "$CID" || true
           exit 1
         fi
-    
+
         # espera o Postgres ficar pronto
         for i in {1..20}; do
           if docker exec "$CID" pg_isready -U root -d root >/dev/null 2>&1; then
@@ -56,7 +56,7 @@ jobs:
           fi
           echo "Aguardando Postgres..."
           sleep 2
-    
+
           # se cair no meio do caminho, já mostra logs
           if [ "$(docker inspect -f '{{.State.Running}}' "$CID")" != "true" ]; then
             echo "Postgres caiu durante a espera. Logs:"
@@ -64,7 +64,7 @@ jobs:
             exit 1
           fi
         done
-    
+
         echo "Postgres não ficou pronto a tempo. Logs:"
         docker logs "$CID" || true
         exit 1
@@ -77,3 +77,12 @@ jobs:
         
     - name: Test
       run: DB_HOST=${{ secrets.DB_HOST }} DB_PASSWORD=${{ secrets.DB_PASSWORD }} DB_USER=${{ secrets.DB_USER }} DB_NAME=${{ secrets.DB_NAME }} DB_PORT=${{ secrets.DB_PORT }} go test -v main_test.go
+
+    - name: Build
+      run: go build main.go
+
+    - name: Upload project
+    uses: actions/upload-artifact@v4
+    with:
+      name: projeto_compilado
+      path: main
